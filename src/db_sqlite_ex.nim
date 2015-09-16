@@ -82,18 +82,3 @@ proc getValueNew*(db: DbConn, query: SqlQuery,
   else:
     result.data = ""
   if finalize(stmt) != SQLITE_OK: dbError(db)
-
-when not defined(testing) and isMainModule:
-  var db = open("db.sql", "", "", "")
-  exec(db, sql"create table tbl1(one varchar(10), two smallint)", [])
-  exec(db, sql"insert into tbl1 values('hello!',10)", [])
-  exec(db, sql"insert into tbl1 values('goodbye', 20)", [])
-  #db.query("create table tbl1(one varchar(10), two smallint)")
-  #db.query("insert into tbl1 values('hello!',10)")
-  #db.query("insert into tbl1 values('goodbye', 20)")
-  for r in db.rows(sql"select * from tbl1", []):
-    echo(r[0], r[1])
-  for r in db.instantRows(sql"select * from tbl1", []):
-    echo(r[0], r[1])
-
-  db_sqlite.close(db)
