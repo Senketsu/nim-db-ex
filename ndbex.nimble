@@ -1,5 +1,5 @@
 [Package]
-name = "nim-db-ex"
+name = "ndbex"
 version = "0.1.0"
 author = "Senketsu"
 description = "extension for Nim's database modules (db_*)"
