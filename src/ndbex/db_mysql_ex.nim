@@ -7,12 +7,60 @@ type
                                                    ## indicating if any data were
                                                    ## retrieved
 
+proc dbError(db: DbConn) {.noreturn.} =
+  ## raises an EDb exception.
+  var e: ref EDb
+  new(e)
+  e.msg = $mysql.error(db)
+  raise e
+
+proc dbFormat(formatstr: SqlQuery, args: varargs[string]): string =
+  result = ""
+  var a = 0
+  for c in items(string(formatstr)):
+    if c == '?':
+      if args[a] == nil:
+        add(result, "NULL")
+      else:
+        add(result, dbQuote(args[a]))
+      inc(a)
+    else:
+      add(result, c)
+
+proc rawExec(db: DbConn, query: SqlQuery, args: varargs[string, `$`]) =
+  var q = dbFormat(query, args)
+  if mysql.realQuery(db, q, q.len) != 0'i32: dbError(db)
+
 proc newRow(L: int): RowNew =
   newSeq(result.data, L)
   for i in 0..L-1:
    result.data[i] = ""
   result.hasData = false
 
+proc properFreeResult(sqlres: mysql.PRES, row: cstringArray) =
+  if row != nil:
+    while mysql.fetchRow(sqlres) != nil: discard
+  mysql.freeResult(sqlres)
+
+proc hasData*(rows: seq[db_mysql.Row]): bool =
+  result = false
+  for row in rows:
+    for item in row:
+      if item != "" and item != nil:
+        result = true
+        break
+
+proc hasData*(row: db_mysql.Row): bool =
+  result = false
+  for item in row:
+    if item != "" and item != nil:
+      result = true
+      break
+
+proc hasData*(value: string): bool =
+  result = false
+  if value != "" and value != nil:
+    result = true
 
 iterator fastRowsNew*(db: DbConn, query: SqlQuery,
                    args: varargs[string, `$`]): RowNew {.tags: [FReadDB].} =

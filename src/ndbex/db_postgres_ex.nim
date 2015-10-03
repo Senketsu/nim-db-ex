@@ -22,6 +22,44 @@ proc setRow(res: PPGresult, r: var RowNew, line, cols: int32) =
       add(r.data[col], x)
       r.hasData = true
 
+proc hasData*(rows: seq[db_postgres.Row]): bool =
+  result = false
+  for row in rows:
+    for item in row:
+      if item != "" and item != nil:
+        result = true
+        break
+
+proc hasData*(row: db_postgres.Row): bool =
+  result = false
+  for item in row:
+    if item != "" and item != nil:
+      result = true
+      break
+
+proc hasData*(value: string): bool =
+  result = false
+  if value != "" and value != nil:
+    result = true
+
+
+proc setupQuery(db: DbConn, query: SqlQuery,
+                args: varargs[string]): PPGresult =
+  var arr = allocCStringArray(args)
+  result = pqexecParams(db, query.string, int32(args.len), nil, arr,
+                        nil, nil, 0)
+  deallocCStringArray(arr)
+  if pqResultStatus(result) != PGRES_TUPLES_OK: dbError(db)
+
+proc setupQuery(db: DbConn, stmtName: SqlPrepared,
+                 args: varargs[string]): PPGresult =
+  var arr = allocCStringArray(args)
+  result = pqexecPrepared(db, stmtName.string, int32(args.len), arr,
+                          nil, nil, 0)
+  deallocCStringArray(arr)
+  if pqResultStatus(result) != PGRES_TUPLES_OK: dbError(db)
+
+
 iterator fastRowsNew*(db: DbConn, query: SqlQuery,
                    args: varargs[string, `$`]): RowNew {.tags: [FReadDB].} =
   ## executes the query and iterates over the result dataset. This is very

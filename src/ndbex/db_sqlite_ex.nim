@@ -7,11 +7,48 @@ type
                                                    ## indicating if any data were
                                                    ## retrieved
 
+proc dbError(db: DbConn) {.noreturn.} =
+  ## raises an EDb exception.
+  var e: ref EDb
+  new(e)
+  e.msg = $sqlite3.errmsg(db)
+  raise e
+
 proc newRow(L: int): RowNew =
   newSeq(result.data, L)
   for i in 0..L-1:
    result.data[i] = ""
   result.hasData = false
+
+proc dbQuote(s: string): string =
+  if s.isNil: return "NULL"
+  result = "'"
+  for c in items(s):
+    if c == '\'': add(result, "''")
+    else: add(result, c)
+  add(result, '\'')
+
+proc dbFormat(formatstr: SqlQuery, args: varargs[string]): string =
+  result = ""
+  var a = 0
+  for c in items(string(formatstr)):
+    if c == '?':
+      add(result, dbQuote(args[a]))
+      inc(a)
+    else:
+      add(result, c)
+
+proc setupQuery(db: DbConn, query: SqlQuery,
+                args: varargs[string]): Pstmt =
+  var q = dbFormat(query, args)
+  if prepare_v2(db, q, q.len.cint, result, nil) != SQLITE_OK: dbError(db)
+
+proc setRow(stmt: Pstmt, r: var Row, cols: cint) =
+  for col in 0..cols-1:
+    setLen(r[col], column_bytes(stmt, col)) # set capacity
+    setLen(r[col], 0)
+    let x = column_text(stmt, col)
+    if not isNil(x): add(r[col], x)
 
 proc setRow(stmt: Pstmt, r: var RowNew, cols: cint) =
   for col in 0..cols-1:
@@ -21,6 +58,26 @@ proc setRow(stmt: Pstmt, r: var RowNew, cols: cint) =
     if not isNil(x):
      add(r.data[col], x)
      r.hasData = true
+
+proc hasData*(rows: seq[db_sqlite.Row]): bool =
+  result = false
+  for row in rows:
+    for item in row:
+      if item != "" and item != nil:
+        result = true
+        break
+
+proc hasData*(row: db_sqlite.Row): bool =
+  result = false
+  for item in row:
+    if item != "" and item != nil:
+      result = true
+      break
+
+proc hasData*(value: string): bool =
+  result = false
+  if value != "" and value != nil:
+    result = true
 
 iterator fastRowsNew*(db: DbConn, query: SqlQuery,
                    args: varargs[string, `$`]): RowNew  {.tags: [FReadDb].} =
