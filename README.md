@@ -1,12 +1,16 @@
 # nim-db-ex
-An extension modules for Nim's 'db_*' modules
+A small extension to Nim's db_* modules
 
 ## About:
-These are convenience modules that use new type 'RowNew'.
-* `tuple[hasData: bool,data: seq[string]]`
-* Each Row retrieving procedure has its equivalent for type 'RowNew' with a suffix 'New'
-* e.g: `getRowNew()` ,`getAllRowsNew()` ,`fastRowsNew()` ...
-* Contains proc `getValueNew()` to return `tuple[hasData: bool, data: string]`
+This library is a small extension for Nim's db_* modules that uses new type **RowNew**  
+Importing those extensions will also import Nim's db_* modules.
 
-These modules import & export their parent modules 'db_*'
+### Contents:
+Adds:
+* New type **RowNew** `tuple[hasData: bool,data: seq[string]]`
+* Convenience proc `hasData()` for **string**, **Row** & **seq[Row]**
+* Convenience proc `getValueNew()` - returns `tuple[hasData: bool, data: string]`
+* Basic procedures for the new type:  
+    `getRowNew()`, `getAllRowsNew()`,  & iterators `fastRowsNew()`, `rowsNew`
+
 

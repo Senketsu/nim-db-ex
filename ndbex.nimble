@@ -1,6 +1,6 @@
 [Package]
 name = "ndbex"
-version = "0.2.0"
+version = "0.2.1"
 author = "Senketsu"
 description = "small extension for Nim's database modules (db_*)"
 license = "MIT"
