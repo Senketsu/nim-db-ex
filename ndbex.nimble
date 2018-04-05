@@ -1,9 +1,9 @@
 [Package]
 name = "ndbex"
-version = "0.1.1"
+version = "0.2.0"
 author = "Senketsu"
-description = "extension for Nim's database modules (db_*)"
+description = "small extension for Nim's database modules (db_*)"
 license = "MIT"
 srcDir = "src"
 [Deps]
-Requires: "nim >= 0.11.3"
+Requires: "nim >= 0.18.0"

@@ -42,13 +42,28 @@ proc hasData*(value: string): bool =
   if value != "" and value != nil:
     result = true
 
+proc dbFormat(formatstr: SqlQuery, args: varargs[string]): string =
+  result = ""
+  var a = 0
+  if args.len > 0 and not string(formatstr).contains("?"):
+    dbError("""parameter substitution expects "?" """)
+  if args.len == 0:
+    return string(formatstr)
+  else:
+    for c in items(string(formatstr)):
+      if c == '?':
+        if args[a] == nil:
+          add(result, "NULL")
+        else:
+          add(result, dbQuote(args[a]))
+        inc(a)
+      else:
+        add(result, c)
+
 
 proc setupQuery(db: DbConn, query: SqlQuery,
                 args: varargs[string]): PPGresult =
-  var arr = allocCStringArray(args)
-  result = pqexecParams(db, query.string, int32(args.len), nil, arr,
-                        nil, nil, 0)
-  deallocCStringArray(arr)
+  result = pqexec(db, dbFormat(query, args))
   if pqResultStatus(result) != PGRES_TUPLES_OK: dbError(db)
 
 proc setupQuery(db: DbConn, stmtName: SqlPrepared,
@@ -61,7 +76,7 @@ proc setupQuery(db: DbConn, stmtName: SqlPrepared,
 
 
 iterator fastRowsNew*(db: DbConn, query: SqlQuery,
-                   args: varargs[string, `$`]): RowNew {.tags: [FReadDB].} =
+                   args: varargs[string, `$`]): RowNew {.tags: [ReadDbEffect].} =
   ## executes the query and iterates over the result dataset. This is very
   ## fast, but potenially dangerous: If the for-loop-body executes another
   ## query, the results can be undefined. For Postgres it is safe though.
@@ -74,7 +89,7 @@ iterator fastRowsNew*(db: DbConn, query: SqlQuery,
   pqclear(res)
 
 iterator fastRowsNew*(db: DbConn, stmtName: SqlPrepared,
-                   args: varargs[string, `$`]): RowNew {.tags: [FReadDB].} =
+                   args: varargs[string, `$`]): RowNew {.tags: [ReadDbEffect].} =
   ## executes the prepared query and iterates over the result dataset.
   var res = setupQuery(db, stmtName, args)
   var L = pqNfields(res)
@@ -86,7 +101,7 @@ iterator fastRowsNew*(db: DbConn, stmtName: SqlPrepared,
 
 
 proc getRowNew*(db: DbConn, query: SqlQuery,
-             args: varargs[string, `$`]): RowNew {.tags: [FReadDB].} =
+             args: varargs[string, `$`]): RowNew {.tags: [ReadDbEffect].} =
   ## retrieves a single row. If the query doesn't return any rows, this proc
   ## will return a Row with empty strings for each column.
   var res = setupQuery(db, query, args)
@@ -96,7 +111,7 @@ proc getRowNew*(db: DbConn, query: SqlQuery,
   pqclear(res)
 
 proc getRowNew*(db: DbConn, stmtName: SqlPrepared,
-             args: varargs[string, `$`]): RowNew {.tags: [FReadDB].} =
+             args: varargs[string, `$`]): RowNew {.tags: [ReadDbEffect].} =
   var res = setupQuery(db, stmtName, args)
   var L = pqNfields(res)
   result = newRow(L)
@@ -104,29 +119,29 @@ proc getRowNew*(db: DbConn, stmtName: SqlPrepared,
   pqClear(res)
 
 proc getAllRowsNew*(db: DbConn, query: SqlQuery,
-                 args: varargs[string, `$`]): seq[RowNew] {.tags: [FReadDB].} =
+                 args: varargs[string, `$`]): seq[RowNew] {.tags: [ReadDbEffect].} =
   ## executes the query and returns the whole result dataset.
   result = @[]
   for r in fastRowsNew(db, query, args):
     result.add(r)
 
 proc getAllRowsNew*(db: DbConn, stmtName: SqlPrepared,
-                 args: varargs[string, `$`]): seq[RowNew] {.tags: [FReadDB].} =
+                 args: varargs[string, `$`]): seq[RowNew] {.tags: [ReadDbEffect].} =
   ## executes the prepared query and returns the whole result dataset.
   result = @[]
   for r in fastRowsNew(db, stmtName, args):
     result.add(r)
 
 iterator rowsNew*(db: DbConn, query: SqlQuery,
-               args: varargs[string, `$`]): RowNew {.tags: [FReadDB].} =
+               args: varargs[string, `$`]): RowNew {.tags: [ReadDbEffect].} =
   ## same as `fastRows`, but slower and safe.
   for r in items(getAllRowsNew(db, query, args)): yield r
 
 proc getValueNew*(db: DbConn, query: SqlQuery,
-               args: varargs[string, `$`]): tuple[hasData: bool,data: string] {.tags: [FReadDB].} =
+               args: varargs[string, `$`]): tuple[hasData: bool,data: string] {.tags: [ReadDbEffect].} =
   ## executes the query and returns the first column of the first row of the
   ## result dataset. Returns "" if the dataset contains no rows or the database
   ## value is NULL.
   var x = pqgetvalue(setupQuery(db, query, args), 0, 0)
   result.data = if isNil(x): "" else: $x
-  result.hasData = if isNil(x): false else: true
+  result.hasData = result.data.hasData()

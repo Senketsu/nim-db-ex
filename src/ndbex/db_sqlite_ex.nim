@@ -7,26 +7,11 @@ type
                                                    ## indicating if any data were
                                                    ## retrieved
 
-proc dbError(db: DbConn) {.noreturn.} =
-  ## raises an EDb exception.
-  var e: ref EDb
-  new(e)
-  e.msg = $sqlite3.errmsg(db)
-  raise e
-
 proc newRow(L: int): RowNew =
   newSeq(result.data, L)
   for i in 0..L-1:
    result.data[i] = ""
   result.hasData = false
-
-proc dbQuote(s: string): string =
-  if s.isNil: return "NULL"
-  result = "'"
-  for c in items(s):
-    if c == '\'': add(result, "''")
-    else: add(result, c)
-  add(result, '\'')
 
 proc dbFormat(formatstr: SqlQuery, args: varargs[string]): string =
   result = ""
@@ -51,7 +36,7 @@ proc setRow(stmt: Pstmt, r: var Row, cols: cint) =
     if not isNil(x): add(r[col], x)
 
 proc setRow(stmt: Pstmt, r: var RowNew, cols: cint) =
-  for col in 0..cols-1:
+  for col in 0'i32..cols-1:
     setLen(r.data[col], column_bytes(stmt, col)) # set capacity
     setLen(r.data[col], 0)
     let x = column_text(stmt, col)
@@ -80,14 +65,14 @@ proc hasData*(value: string): bool =
     result = true
 
 iterator fastRowsNew*(db: DbConn, query: SqlQuery,
-                   args: varargs[string, `$`]): RowNew  {.tags: [FReadDb].} =
+                   args: varargs[string, `$`]): RowNew  {.tags: [ReadDbEffect].} =
   ## Executes the query and iterates over the result dataset.
   ##
   ## This is very fast, but potentially dangerous.  Use this iterator only
   ## if you require **ALL** the rows.
   ##
   ## Breaking the fastRows() iterator during a loop will cause the next
-  ## database query to raise an [EDb] exception ``unable to close due to ...``.
+  ## database query to raise an [DbError] exception ``unable to close due to ...``.
   var stmt = setupQuery(db, query, args)
   var L = (column_count(stmt))
   var result: RowNew = newRow(L)
@@ -98,7 +83,7 @@ iterator fastRowsNew*(db: DbConn, query: SqlQuery,
 
 
 proc getRowNew*(db: DbConn, query: SqlQuery,
-             args: varargs[string, `$`]): RowNew {.tags: [FReadDb].} =
+             args: varargs[string, `$`]): RowNew {.tags: [ReadDbEffect].} =
   ## retrieves a single row. If the query doesn't return any rows, this proc
   ## will return a Row with empty strings for each column.
   var stmt = setupQuery(db, query, args)
@@ -109,20 +94,20 @@ proc getRowNew*(db: DbConn, query: SqlQuery,
   if finalize(stmt) != SQLITE_OK: dbError(db)
 
 proc getAllRowsNew*(db: DbConn, query: SqlQuery,
-                 args: varargs[string, `$`]): seq[RowNew] {.tags: [FReadDb].} =
+                 args: varargs[string, `$`]): seq[RowNew] {.tags: [ReadDbEffect].} =
   ## executes the query and returns the whole result dataset.
   result = @[]
   for r in fastRowsNew(db, query, args):
     result.add(r)
 
 iterator rowsNew*(db: DbConn, query: SqlQuery,
-               args: varargs[string, `$`]): RowNew {.tags: [FReadDb].} =
+               args: varargs[string, `$`]): RowNew {.tags: [ReadDbEffect].} =
   ## same as `FastRows`, but slower and safe.
   for r in fastRowsNew(db, query, args): yield r
 
 
 proc getValueNew*(db: DbConn, query: SqlQuery,
-               args: varargs[string, `$`]): tuple[hasData: bool,data: string] {.tags: [FReadDb].} =
+               args: varargs[string, `$`]): tuple[hasData: bool,data: string] {.tags: [ReadDbEffect].} =
   ## executes the query and returns the first column of the first row of the
   ## result dataset. Returns "" if the dataset contains no rows or the database
   ## value is NULL.

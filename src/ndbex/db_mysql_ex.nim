@@ -7,13 +7,6 @@ type
                                                    ## indicating if any data were
                                                    ## retrieved
 
-proc dbError(db: DbConn) {.noreturn.} =
-  ## raises an EDb exception.
-  var e: ref EDb
-  new(e)
-  e.msg = $mysql.error(db)
-  raise e
-
 proc dbFormat(formatstr: SqlQuery, args: varargs[string]): string =
   result = ""
   var a = 0
@@ -29,7 +22,7 @@ proc dbFormat(formatstr: SqlQuery, args: varargs[string]): string =
 
 proc rawExec(db: DbConn, query: SqlQuery, args: varargs[string, `$`]) =
   var q = dbFormat(query, args)
-  if mysql.realQuery(db, q, q.len) != 0'i32: dbError(db)
+  if mysql.realQuery(PMySQL db, q, q.len) != 0'i32: dbError(db)
 
 proc newRow(L: int): RowNew =
   newSeq(result.data, L)
@@ -63,40 +56,57 @@ proc hasData*(value: string): bool =
     result = true
 
 iterator fastRowsNew*(db: DbConn, query: SqlQuery,
-                   args: varargs[string, `$`]): RowNew {.tags: [FReadDB].} =
+            args: varargs[string, `$`]): RowNew {.tags: [ReadDbEffect].} =
   ## executes the query and iterates over the result dataset.
   ##
   ## This is very fast, but potentially dangerous.  Use this iterator only
   ## if you require **ALL** the rows.
   ##
   ## Breaking the fastRows() iterator during a loop will cause the next
-  ## database query to raise an [EDb] exception ``Commands out of sync``.
+  ## database query to raise an [DbError] exception ``Commands out of sync``.
   rawExec(db, query, args)
-  var sqlres = mysql.useResult(db)
+  var sqlres = mysql.useResult(PMySQL db)
   if sqlres != nil:
-    var L = int(mysql.numFields(sqlres))
-    var result: RowNew = newRow(L)
-    var row: cstringArray
+    var
+      L = int(mysql.numFields(sqlres))
+      row: cstringArray
+      result: RowNew
+      backup: db_mysql.Row
+    newSeq(result.data, L)
     while true:
       row = mysql.fetchRow(sqlres)
       if row == nil: break
       for i in 0..L-1:
-        setLen(result.data[i], 0)
+        # Apparently this somehow fixes a bug.. *shrug*
         if row[i] == nil:
+          if backup == nil:
+            newSeq(backup, L)
+          if backup[i] == nil and result.data[i] != nil:
+            shallowCopy(backup[i], result.data[i])
           result.data[i] = nil
         else:
+          if result.data[i] == nil:
+            if backup != nil:
+              if backup[i] == nil:
+                backup[i] = ""
+              shallowCopy(result.data[i], backup[i])
+              setLen(result.data[i], 0)
+            else:
+              result.data[i] = ""
+          else:
+            setLen(result.data[i], 0)
           add(result.data[i], row[i])
           result.hasData = true
       yield result
     properFreeResult(sqlres, row)
 
 proc getRowNew*(db: DbConn, query: SqlQuery,
-             args: varargs[string, `$`]): RowNew {.tags: [FReadDB].} =
+                 args: varargs[string, `$`]): RowNew {.tags: [ReadDbEffect].} =
   ## executes the query and returns RowNew with hasData indicating if any data
   ## were retrieved
   result.hasData = false
   rawExec(db, query, args)
-  var sqlres = mysql.useResult(db)
+  var sqlres = mysql.useResult(PMySQL db)
   if sqlres != nil:
     var L = int(mysql.numFields(sqlres))
     result = newRow(L)
@@ -112,12 +122,12 @@ proc getRowNew*(db: DbConn, query: SqlQuery,
     properFreeResult(sqlres, row)
 
 proc getAllRowsNew*(db: DbConn, query: SqlQuery,
-                 args: varargs[string, `$`]): seq[RowNew] {.tags: [FReadDB].} =
+                 args: varargs[string, `$`]): seq[RowNew] {.tags: [ReadDbEffect].} =
   ## executes the query and returns the whole result dataset with a boolean for
   ## each row indicating whether row has any data
   result = @[]
   rawExec(db, query, args)
-  var sqlres = mysql.useResult(db)
+  var sqlres = mysql.useResult(PMySQL db)
   if sqlres != nil:
     var L = int(mysql.numFields(sqlres))
     var row: cstringArray
@@ -137,17 +147,16 @@ proc getAllRowsNew*(db: DbConn, query: SqlQuery,
     mysql.freeResult(sqlres)
 
 iterator rowsNew*(db: DbConn, query: SqlQuery,
-               args: varargs[string, `$`]): RowNew {.tags: [FReadDB].} =
+               args: varargs[string, `$`]): RowNew {.tags: [ReadDbEffect].} =
   ## same as `fastRows`, but slower and safe.
   for r in items(getAllRowsNew(db, query, args)): yield r
 
 proc getValueNew*(db: DbConn, query: SqlQuery,
-               args: varargs[string, `$`]): tuple[hasData: bool,data: string] {.tags: [FReadDB].} =
+               args: varargs[string, `$`]): tuple[hasData: bool,data: string] {.tags: [ReadDbEffect].} =
   ## executes the query and returns the first column of the first row of the
   ## result dataset. Returns "" if the dataset contains no rows or the database
   ## value is NULL.
   result.data = getRowNew(db, query, args).data[0]
-  # result.data = row.data[0]
   result.hasData = result.data.hasData()
 
 
